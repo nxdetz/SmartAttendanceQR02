@@ -9,6 +9,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController @RequestMapping("/api")
 public class ApiController{
+ static final ZoneId ZONE=ZoneId.of(System.getenv().getOrDefault("APP_TZ","Asia/Bangkok"));
  private final JdbcTemplate db;private final ObjectProvider<JavaMailSender> mail;private final BCryptPasswordEncoder enc=new BCryptPasswordEncoder();
  public ApiController(JdbcTemplate d,ObjectProvider<JavaMailSender> m){db=d;mail=m;}
  void auth(HttpSession s){if(s.getAttribute("user")==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"กรุณาเข้าสู่ระบบ");}
@@ -26,7 +27,7 @@ public class ApiController{
  @PostMapping("/students") Map<String,Object> addStudent(@RequestBody Map<String,String>b,HttpSession s){auth(s);try{db.update("INSERT INTO students(student_code,full_name) VALUES(?,?)",val(b,"code"),val(b,"name"));return Map.of("ok",true);}catch(Exception e){throw new ResponseStatusException(HttpStatus.CONFLICT,"รหัสนักศึกษาซ้ำหรือข้อมูลไม่ครบ");}}
  @PostMapping("/enroll") Map<String,Object> enroll(@RequestBody Map<String,String>b,HttpSession s){auth(s);try{db.update("INSERT INTO enrollments(course_id,student_id) SELECT ?,id FROM students WHERE student_code=?",Integer.parseInt(val(b,"courseId")),val(b,"code"));return Map.of("ok",true);}catch(Exception e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"ไม่พบรหัสนักศึกษา หรือเคยลงทะเบียนแล้ว");}}
  @PostMapping("/attendance") Map<String,Object> attend(@RequestBody Map<String,String>b,HttpSession s){
-  auth(s);int cid=Integer.parseInt(val(b,"courseId"));String code=val(b,"code"),date=LocalDate.now().toString(),time=LocalTime.now().withNano(0).toString();
+  auth(s);int cid=Integer.parseInt(val(b,"courseId"));String code=val(b,"code"),date=LocalDate.now(ZONE).toString(),time=LocalTime.now(ZONE).withNano(0).toString();
   var r=db.queryForList("SELECT s.id,s.full_name,c.name,c.teacher_email FROM students s JOIN enrollments e ON e.student_id=s.id JOIN courses c ON c.id=e.course_id WHERE s.student_code=? AND c.id=?",code,cid);
   if(r.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND,"ไม่พบผู้เรียนในรายวิชานี้");
   var x=r.get(0);try{db.update("INSERT INTO attendance(course_id,student_id,attendance_date,attendance_time,status) VALUES(?,?,?,?,?)",cid,x.get("id"),date,time,"มาเรียน");}catch(Exception e){throw new ResponseStatusException(HttpStatus.CONFLICT,"เช็คชื่อวันนี้แล้ว");}
@@ -35,7 +36,7 @@ public class ApiController{
   return Map.of("ok",true,"name",x.get("full_name"),"time",time,"emailSent",sent);
  }
  @GetMapping("/report") Map<String,Object> report(@RequestParam int courseId,HttpSession s){
-  auth(s);var rows=db.queryForList("SELECT s.student_code,s.full_name,CASE WHEN a.id IS NULL THEN 'ขาดเรียน' ELSE 'มาเรียน' END status,a.attendance_time FROM enrollments e JOIN students s ON s.id=e.student_id LEFT JOIN attendance a ON a.student_id=s.id AND a.course_id=e.course_id AND a.attendance_date=? WHERE e.course_id=? ORDER BY s.student_code",LocalDate.now().toString(),courseId);
+  auth(s);var rows=db.queryForList("SELECT s.student_code,s.full_name,CASE WHEN a.id IS NULL THEN 'ขาดเรียน' ELSE 'มาเรียน' END status,a.attendance_time FROM enrollments e JOIN students s ON s.id=e.student_id LEFT JOIN attendance a ON a.student_id=s.id AND a.course_id=e.course_id AND a.attendance_date=? WHERE e.course_id=? ORDER BY s.student_code",LocalDate.now(ZONE).toString(),courseId);
   long p=rows.stream().filter(x->"มาเรียน".equals(x.get("status"))).count();return Map.of("students",rows,"total",rows.size(),"present",p,"absent",rows.size()-p);
  }
 }
