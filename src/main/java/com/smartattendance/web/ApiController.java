@@ -27,6 +27,10 @@ public class ApiController{
  String val(Map<String,String>b,String k){return b.getOrDefault(k,"").trim();}
  int toInt(String v){try{return Integer.parseInt(v.trim());}catch(Exception e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"ข้อมูลไม่ถูกต้อง");}}
  String newToken(){return UUID.randomUUID().toString().replace("-","");}
+ String dateOf(String v){
+  if(v==null||v.isBlank())return LocalDate.now(ZONE).toString();
+  try{return LocalDate.parse(v.trim()).toString();}catch(Exception e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"รูปแบบวันที่ไม่ถูกต้อง");}
+ }
 
  // accepts a plain student code or a scanned URL like https://host/s/<token>
  String resolveCode(String input){
@@ -55,6 +59,55 @@ public class ApiController{
   catch(Exception e){throw new ResponseStatusException(HttpStatus.CONFLICT,"รหัสวิชาซ้ำหรือข้อมูลไม่ครบ");}
  }
 
+
+ @PutMapping("/students/{id}") Map<String,Object> editStudent(@PathVariable int id,@RequestBody Map<String,String>b,HttpSession s){
+  auth(s);String code=val(b,"code"),name=val(b,"name");
+  if(code.isEmpty()||name.isEmpty())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"กรุณากรอกรหัสและชื่อนักศึกษา");
+  int n;
+  try{n=db.update("UPDATE students SET student_code=?,full_name=? WHERE id=?",code,name,id);}
+  catch(Exception e){throw new ResponseStatusException(HttpStatus.CONFLICT,"รหัสนักศึกษาซ้ำ");}
+  if(n==0)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"ไม่พบนักศึกษา");
+  return Map.of("ok",true);
+ }
+ @DeleteMapping("/students/{id}") Map<String,Object> deleteStudent(@PathVariable int id,HttpSession s){
+  auth(s);
+  db.update("DELETE FROM attendance WHERE student_id=?",id);
+  db.update("DELETE FROM enrollments WHERE student_id=?",id);
+  db.update("DELETE FROM students WHERE id=?",id);
+  return Map.of("ok",true);
+ }
+ @PostMapping("/students/{id}/regen-qr") Map<String,Object> regenQr(@PathVariable int id,HttpSession s){
+  auth(s);
+  int n=db.update("UPDATE students SET qr_token=? WHERE id=?",newToken(),id);
+  if(n==0)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"ไม่พบนักศึกษา");
+  return Map.of("ok",true);
+ }
+ @GetMapping("/enrollments") List<Map<String,Object>> enrollments(@RequestParam int courseId,HttpSession s){
+  auth(s);
+  return db.queryForList("SELECT s.id,s.student_code,s.full_name FROM enrollments e JOIN students s ON s.id=e.student_id WHERE e.course_id=? ORDER BY s.student_code",courseId);
+ }
+ @DeleteMapping("/enroll") Map<String,Object> unenroll(@RequestParam int courseId,@RequestParam int studentId,HttpSession s){
+  auth(s);
+  db.update("DELETE FROM enrollments WHERE course_id=? AND student_id=?",courseId,studentId);
+  return Map.of("ok",true);
+ }
+ @PutMapping("/courses/{id}") Map<String,Object> editCourse(@PathVariable int id,@RequestBody Map<String,String>b,HttpSession s){
+  auth(s);
+  if(val(b,"code").isEmpty()||val(b,"name").isEmpty())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"กรุณากรอกรหัสวิชาและชื่อวิชา");
+  int n;
+  try{n=db.update("UPDATE courses SET code=?,name=?,teacher_email=? WHERE id=?",val(b,"code"),val(b,"name"),val(b,"email"),id);}
+  catch(Exception e){throw new ResponseStatusException(HttpStatus.CONFLICT,"รหัสวิชาซ้ำ");}
+  if(n==0)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"ไม่พบรายวิชา");
+  return Map.of("ok",true);
+ }
+ @DeleteMapping("/courses/{id}") Map<String,Object> deleteCourse(@PathVariable int id,HttpSession s){
+  auth(s);
+  db.update("DELETE FROM attendance WHERE course_id=?",id);
+  db.update("DELETE FROM enrollments WHERE course_id=?",id);
+  db.update("DELETE FROM sessions WHERE course_id=?",id);
+  db.update("DELETE FROM courses WHERE id=?",id);
+  return Map.of("ok",true);
+ }
  @GetMapping("/students") List<Map<String,Object>> students(HttpSession s){auth(s);return db.queryForList("SELECT * FROM students ORDER BY student_code");}
  @PostMapping("/students") Map<String,Object> addStudent(@RequestBody Map<String,String>b,HttpSession s){
   auth(s);
@@ -138,8 +191,23 @@ public class ApiController{
   return ResponseEntity.ok().contentType(MediaType.valueOf("image/svg+xml")).body(sb.toString());
  }
 
- @GetMapping("/report") Map<String,Object> report(@RequestParam int courseId,HttpSession s){
-  auth(s);var rows=db.queryForList("SELECT s.student_code,s.full_name,CASE WHEN a.id IS NULL THEN 'ขาดเรียน' ELSE 'มาเรียน' END status,a.attendance_time FROM enrollments e JOIN students s ON s.id=e.student_id LEFT JOIN attendance a ON a.student_id=s.id AND a.course_id=e.course_id AND a.attendance_date=? WHERE e.course_id=? ORDER BY s.student_code",LocalDate.now(ZONE).toString(),courseId);
+ @DeleteMapping("/attendance") Map<String,Object> deleteAttendance(@RequestParam int courseId,@RequestParam int studentId,@RequestParam String date,HttpSession s){
+  auth(s);
+  db.update("DELETE FROM attendance WHERE course_id=? AND student_id=? AND attendance_date=?",courseId,studentId,dateOf(date));
+  return Map.of("ok",true);
+ }
+ @PostMapping("/attendance/manual") Map<String,Object> manualAttend(@RequestBody Map<String,String>b,HttpSession s){
+  auth(s);int cid=toInt(val(b,"courseId"));int sid=toInt(val(b,"studentId"));String d=dateOf(val(b,"date"));
+  String time=d.equals(LocalDate.now(ZONE).toString())?LocalTime.now(ZONE).format(TIME):"-";
+  int n;
+  try{n=db.update("INSERT INTO attendance(course_id,student_id,attendance_date,attendance_time,status) SELECT e.course_id,e.student_id,?,?,? FROM enrollments e WHERE e.course_id=? AND e.student_id=?",d,time,"มาเรียน",cid,sid);}
+  catch(Exception e){throw new ResponseStatusException(HttpStatus.CONFLICT,"มีการเช็คชื่อแล้ว");}
+  if(n==0)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"ไม่พบนักศึกษาในรายวิชานี้");
+  return Map.of("ok",true);
+ }
+
+ @GetMapping("/report") Map<String,Object> report(@RequestParam int courseId,@RequestParam(required=false) String date,HttpSession s){
+  auth(s);var rows=db.queryForList("SELECT s.id AS student_id,s.student_code,s.full_name,CASE WHEN a.id IS NULL THEN 'ขาดเรียน' ELSE 'มาเรียน' END status,a.attendance_time FROM enrollments e JOIN students s ON s.id=e.student_id LEFT JOIN attendance a ON a.student_id=s.id AND a.course_id=e.course_id AND a.attendance_date=? WHERE e.course_id=? ORDER BY s.student_code",dateOf(date),courseId);
   long p=rows.stream().filter(x->"มาเรียน".equals(x.get("status"))).count();return Map.of("students",rows,"total",rows.size(),"present",p,"absent",rows.size()-p);
  }
 }

@@ -4,3 +4,5 @@
 .qrcard{border:1px solid #cbd6dc;border-radius:10px;padding:10px;text-align:center;break-inside:avoid}
 .qrcard img{width:100%;max-width:150px}.qrcard b{display:block}.qrcard span{display:block;font-size:13px;color:#52646e}.qrcard a{font-size:12px}
 @media print{header,nav,.noprint{display:none!important}body{background:#fff}main{margin:0;max-width:none}.card{border:0;padding:0}.qrgrid{grid-template-columns:repeat(4,1fr)}}
+
+.mini{padding:6px 12px;font-size:13px;margin:0 0 0 6px}.danger{background:#b42318}
