@@ -6,3 +6,6 @@
 @media print{header,nav,.noprint{display:none!important}body{background:#fff}main{margin:0;max-width:none}.card{border:0;padding:0}.qrgrid{grid-template-columns:repeat(4,1fr)}}
 
 .mini{padding:6px 12px;font-size:13px;margin:0 0 0 6px}.danger{background:#b42318}
+.qrbox{text-align:center}.courseqr{display:block;width:100%;max-width:260px;margin:8px auto;border:1px solid #cbd6dc;border-radius:8px;cursor:zoom-in}
+.courseqr.big{position:fixed;inset:0;margin:auto;width:92vmin;max-width:none;height:auto;z-index:100;background:#fff;padding:12px;cursor:zoom-out;box-shadow:0 0 0 100vmax rgba(0,0,0,.78)}
+.loginbox a{color:#18628b}

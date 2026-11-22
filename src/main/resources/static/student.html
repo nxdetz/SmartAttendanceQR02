@@ -1,0 +1,98 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>เช็คชื่อ - นักศึกษา</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f1f5f7;color:#20313b;font:16px Tahoma,Arial}
+header{background:#18364b;color:#fff;padding:14px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+main{max-width:620px;margin:16px auto;padding:0 14px}
+.card{background:#fff;border:1px solid #e0e7eb;border-radius:13px;padding:18px;margin-bottom:14px}
+h2{margin:0 0 8px;font-size:20px}label{display:block;margin:12px 0 6px;font-weight:bold}
+input{display:block;width:100%;padding:12px;border:1px solid #cbd6dc;border-radius:8px;font:inherit}
+button{background:#18364b;color:#fff;border:0;border-radius:8px;padding:12px 18px;font:inherit;font-weight:bold;cursor:pointer;margin-top:14px}
+button.light{background:#e7edf0;color:#233640;margin:0;padding:8px 12px}button.mini{margin:8px 0 0;padding:7px 12px;font-size:14px;background:#e7edf0;color:#233640}
+.hide{display:none!important}.note{color:#71818a;font-size:14px;margin:6px 0}.err{color:#b42318;margin:8px 0 0}
+.result{text-align:center}.result .icon{font-size:56px;line-height:1}.result h2{margin:8px 0}
+.result.ok h2{color:#16845d}.result.info h2{color:#18628b}.result.bad h2{color:#b42318}
+.course{border-top:1px solid #e5eaed;padding:12px 0}.course:first-of-type{border-top:0}
+table{width:100%;border-collapse:collapse;margin-top:8px}td{padding:8px 6px;border-bottom:1px solid #e5eaed;font-size:15px}
+</style></head><body>
+<header><b>▦ SMART ATTENDANCE</b><span id="who"></span><button id="logoutbtn" class="light hide" onclick="logout()">ออกจากระบบ</button></header>
+<main>
+<div id="loginbox" class="card hide"><h2>เข้าสู่ระบบนักศึกษา</h2><p id="logininfo" class="note"></p>
+<label>รหัสนักศึกษา</label><input id="code" autocomplete="username" inputmode="numeric">
+<label>รหัสผ่าน</label><input id="pass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()">
+<button onclick="login()">เข้าสู่ระบบ</button><p id="loginmsg" class="err"></p>
+<p class="note">เข้าครั้งแรก: รหัสผ่านเริ่มต้นคือรหัสนักศึกษาของคุณ แล้วระบบจะให้ตั้งรหัสผ่านใหม่ทันที</p></div>
+
+<div id="pwbox" class="card hide"><h2>ตั้งรหัสผ่านใหม่</h2><p id="pwinfo" class="note">รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร และต้องไม่ตรงกับรหัสนักศึกษา</p>
+<label>รหัสผ่านเดิม</label><input id="oldpw" type="password" autocomplete="current-password">
+<label>รหัสผ่านใหม่</label><input id="newpw" type="password" autocomplete="new-password">
+<label>ยืนยันรหัสผ่านใหม่</label><input id="newpw2" type="password" autocomplete="new-password">
+<button onclick="changePw()">บันทึกรหัสผ่าน</button><p id="pwmsg" class="err"></p></div>
+
+<div id="ckbox" class="card result hide"><div class="icon" id="ckicon"></div><h2 id="cktitle"></h2><p id="ckmsg"></p><button id="ckretry" class="hide" onclick="doCheckin()">ลองอีกครั้ง</button></div>
+
+<div id="coursesbox" class="card hide"><h2>รายวิชาของฉัน</h2><div id="courselist"></div><button class="mini" onclick="togglePw()">เปลี่ยนรหัสผ่าน</button></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const token=location.pathname.startsWith('/c/')?location.pathname.split('/').filter(Boolean).pop():'';
+let me=null,lastPw='';
+function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function api(url,opts={}){let r=await fetch('/api'+url,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...opts});let d={};try{d=await r.json()}catch(e){}if(!r.ok){let er=Error(d.message||'เกิดข้อผิดพลาด');er.status=r.status;throw er}return d}
+function setCk(cls,icon,title,msg,retry){$('ckbox').className='card result '+cls;$('ckicon').textContent=icon;$('cktitle').textContent=title;$('ckmsg').textContent=msg||'';$('ckretry').classList.toggle('hide',!retry)}
+async function init(){
+ if(token)$('logininfo').textContent='กรุณาเข้าสู่ระบบด้วยรหัสนักศึกษาของคุณ เพื่อเช็คชื่อ';
+ try{me=await api('/student/me')}catch(e){me=null}
+ await render()
+}
+async function render(){
+ $('loginbox').classList.toggle('hide',!!me);
+ $('logoutbtn').classList.toggle('hide',!me);
+ $('who').textContent=me?me.code+' '+me.name:'';
+ $('pwbox').classList.toggle('hide',!(me&&me.mustChange));
+ $('ckbox').classList.add('hide');$('coursesbox').classList.add('hide');
+ if(!me)return;
+ if(me.mustChange){$('pwinfo').textContent='ครั้งแรกที่เข้าใช้งาน กรุณาตั้งรหัสผ่านใหม่ก่อน (อย่างน้อย 6 ตัวอักษร และไม่ตรงกับรหัสนักศึกษา)';$('oldpw').value=lastPw;return}
+ if(token)await doCheckin();
+ await loadCourses()
+}
+async function login(){
+ try{lastPw=$('pass').value;me=await api('/student/login',{method:'POST',body:JSON.stringify({code:$('code').value,password:$('pass').value})});$('pass').value='';$('loginmsg').textContent='';await render()}
+ catch(e){$('loginmsg').textContent=e.message}
+}
+async function logout(){try{await api('/student/logout',{method:'POST'})}catch(e){}me=null;lastPw='';await render()}
+function togglePw(){$('pwbox').classList.toggle('hide');$('pwinfo').textContent='รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร และต้องไม่ตรงกับรหัสนักศึกษา'}
+async function changePw(){
+ let n=$('newpw').value,c=$('newpw2').value;
+ if(n!==c){$('pwmsg').textContent='รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน';return}
+ try{await api('/student/password',{method:'POST',body:JSON.stringify({oldPassword:$('oldpw').value,newPassword:n})});me.mustChange=false;lastPw='';$('oldpw').value='';$('newpw').value='';$('newpw2').value='';$('pwmsg').textContent='';await render();alert('เปลี่ยนรหัสผ่านแล้ว')}
+ catch(e){$('pwmsg').textContent=e.message}
+}
+async function doCheckin(){
+ setCk('','⏳','กำลังเช็คชื่อ...','',false);
+ try{
+  let d=await api('/student/checkin',{method:'POST',body:JSON.stringify({token})});
+  if(d.already)setCk('info','ℹ️','เช็คชื่อไปแล้ววันนี้',d.course+' เวลา '+d.time,false);
+  else setCk('ok','✅','เช็คชื่อสำเร็จ',d.course+' เวลา '+d.time,false)
+ }catch(e){
+  if(e.status===401){me=null;await render();return}
+  setCk('bad','⚠️','เช็คชื่อไม่สำเร็จ',e.message,true)
+ }
+}
+async function loadCourses(){
+ try{
+  let cs=await api('/student/courses');
+  $('coursesbox').classList.remove('hide');
+  $('courselist').innerHTML=cs.length?cs.map(c=>`<div class="course"><b>${esc(c.code)}</b> ${esc(c.name)}<div class="note">มาเรียน ${Number(c.present)} จาก ${Number(c.total)} วัน</div><button class="mini" onclick="hist(${Number(c.id)})">ดูประวัติ</button><div class="hide" id="h${Number(c.id)}"></div></div>`).join(''):'<p class="note">ยังไม่มีรายวิชาที่คุณอยู่ในรายชื่อ ถ้าคิดว่าควรมี ให้แจ้งอาจารย์ผู้สอน</p>'
+ }catch(e){if(e.status===401){me=null;await render()}}
+}
+async function hist(id){
+ let box=$('h'+id);
+ if(!box.classList.contains('hide')){box.classList.add('hide');return}
+ try{
+  let h=await api('/student/history?courseId='+id);
+  box.innerHTML=h.length?'<table>'+h.map(x=>`<tr><td>${esc(x.day)}</td><td>${esc(x.status)}</td><td>${esc(x.time||'-')}</td></tr>`).join('')+'</table>':'<p class="note">ยังไม่มีประวัติการเช็คชื่อ</p>';
+  box.classList.remove('hide')
+ }catch(e){alert(e.message)}
+}
+init();
+</script></body></html>
