@@ -9,7 +9,7 @@
 </div>
 <h3>ผู้มาเรียนวันนี้</h3><table><tbody id="today"></tbody></table></section>
 
-<section id="students" class="card hide"><h2>จัดการนักศึกษา</h2><p class="note">ถ้ามีรายชื่อในไฟล์ Excel ให้ไปนำเข้าที่แท็บ รายวิชา จะเร็วกว่าเพิ่มทีละคน นักศึกษาใหม่จะมีรหัสผ่านเริ่มต้นเป็นรหัสนักศึกษา และต้องตั้งรหัสใหม่ตอนเข้าครั้งแรก</p><label>รหัสนักศึกษา</label><input id="newcode"><label>ชื่อ-นามสกุล</label><input id="newname"><button onclick="addStudent()">เพิ่มนักศึกษา</button><table><tbody id="studentlist"></tbody></table></section>
+<section id="students" class="card hide"><h2>จัดการนักศึกษา</h2><label>แสดงนักศึกษาของรายวิชา</label><select id="scourse" onchange="loadStudents()"></select><p id="scount" class="note"></p><p class="note">นักศึกษาที่เพิ่มในหน้านี้จะถูกลงทะเบียนเข้ารายวิชาที่เลือกให้อัตโนมัติ ถ้ามีรายชื่อในไฟล์ Excel ให้นำเข้าที่แท็บ รายวิชา จะเร็วกว่า นักศึกษาใหม่มีรหัสผ่านเริ่มต้นเป็นรหัสนักศึกษา และต้องตั้งรหัสใหม่ตอนเข้าครั้งแรก</p><label>รหัสนักศึกษา</label><input id="newcode"><label>ชื่อ-นามสกุล</label><input id="newname"><button onclick="addStudent()">เพิ่มนักศึกษา</button><table><tbody id="studentlist"></tbody></table></section>
 
 <section id="courses" class="card hide"><h2>จัดการรายวิชา</h2><label>รหัสวิชา</label><input id="ccode"><label>ชื่อวิชา</label><input id="cname"><label>อีเมลอาจารย์ผู้สอน</label><input id="email"><button onclick="addCourse()">เพิ่มรายวิชา</button>
 <h3>นักศึกษาในรายวิชา</h3><label>เลือกรายวิชา</label><select id="enrollcourse" onchange="loadEnrolled()"></select>

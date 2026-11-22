@@ -114,10 +114,17 @@ public class ApiController{
  @GetMapping("/students") List<Map<String,Object>> students(HttpSession s){auth(s);return db.queryForList("SELECT id,student_code,full_name,must_change FROM students ORDER BY student_code");}
  @PostMapping("/students") Map<String,Object> addStudent(@RequestBody Map<String,String>b,HttpSession s){
   auth(s);
-  String code=val(b,"code"),name=val(b,"name");
+  String code=val(b,"code"),name=val(b,"name"),cid=val(b,"courseId");
   if(code.isEmpty()||name.isEmpty())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"กรุณากรอกรหัสและชื่อนักศึกษา");
-  try{db.update("INSERT INTO students(student_code,full_name,must_change) VALUES(?,?,1)",code,name);return Map.of("ok",true);}
-  catch(Exception e){throw new ResponseStatusException(HttpStatus.CONFLICT,"รหัสนักศึกษาซ้ำหรือข้อมูลไม่ครบ");}
+  boolean existing=false;
+  try{db.update("INSERT INTO students(student_code,full_name,must_change) VALUES(?,?,1)",code,name);}
+  catch(Exception e){
+   // code already exists: when adding from a course page, just enroll that existing student
+   if(cid.isEmpty()||db.queryForList("SELECT 1 FROM students WHERE student_code=?",code).isEmpty())throw new ResponseStatusException(HttpStatus.CONFLICT,"รหัสนักศึกษาซ้ำหรือข้อมูลไม่ครบ");
+   existing=true;
+  }
+  if(!cid.isEmpty())db.update("INSERT OR IGNORE INTO enrollments(course_id,student_id) SELECT ?,id FROM students WHERE student_code=?",toInt(cid),code);
+  return Map.of("ok",true,"existing",existing);
  }
  @PutMapping("/students/{id}") Map<String,Object> editStudent(@PathVariable int id,@RequestBody Map<String,String>b,HttpSession s){
   auth(s);String code=val(b,"code"),name=val(b,"name");
@@ -150,7 +157,7 @@ public class ApiController{
  }
  @GetMapping("/enrollments") List<Map<String,Object>> enrollments(@RequestParam int courseId,HttpSession s){
   auth(s);
-  return db.queryForList("SELECT s.id,s.student_code,s.full_name FROM enrollments e JOIN students s ON s.id=e.student_id WHERE e.course_id=? ORDER BY s.student_code",courseId);
+  return db.queryForList("SELECT s.id,s.student_code,s.full_name,s.must_change FROM enrollments e JOIN students s ON s.id=e.student_id WHERE e.course_id=? ORDER BY s.student_code",courseId);
  }
  @DeleteMapping("/enroll") Map<String,Object> unenroll(@RequestParam int courseId,@RequestParam int studentId,HttpSession s){
   auth(s);

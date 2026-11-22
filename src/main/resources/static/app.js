@@ -11,15 +11,22 @@ function tab(id){['check','students','courses','report'].forEach(x=>$(x).classLi
 async function load(){
  courses=await api('/courses');
  let opts=courses.map(c=>`<option value="${Number(c.id)}">${esc(c.code)} - ${esc(c.name)}</option>`).join('');
- setOpts('course',opts);setOpts('enrollcourse',opts);setOpts('rcourse',opts);
+ setOpts('course',opts);setOpts('enrollcourse',opts);setOpts('rcourse',opts);setOpts('scourse',opts+'<option value="all">ทุกวิชา (รวม)</option>');
  await loadStudents();
  $('courselist').innerHTML=courses.map(c=>`<tr><td>${esc(c.code)} - ${esc(c.name)} (${esc(c.teacher_email||'-')})</td><td style="white-space:nowrap;text-align:right"><button class="mini gray" onclick="editCourse(${Number(c.id)})">แก้ไข</button><button class="mini danger" onclick="delCourse(${Number(c.id)})">ลบ</button></td></tr>`).join('');
  showCourseQR();report();refreshSession();loadEnrolled()
 }
 
 // ---------- students
-async function loadStudents(){let s=await api('/students');studs=s;$('studentlist').innerHTML=s.map(x=>`<tr><td>${esc(x.student_code)} - ${esc(x.full_name)}${x.must_change?' <span class="note">(ยังไม่ตั้งรหัสผ่านใหม่)</span>':''}</td><td style="white-space:nowrap;text-align:right"><button class="mini gray" onclick="editStudent(${Number(x.id)})">แก้ไข</button><button class="mini gray" onclick="resetPw(${Number(x.id)})">รีเซ็ตรหัสผ่าน</button><button class="mini danger" onclick="delStudent(${Number(x.id)})">ลบ</button></td></tr>`).join('')}
-async function addStudent(){try{await api('/students',{method:'POST',body:JSON.stringify({code:$('newcode').value,name:$('newname').value})});$('newcode').value='';$('newname').value='';loadStudents()}catch(e){alert(e.message)}}
+async function loadStudents(){
+ let c=$('scourse').value,perCourse=c&&c!=='all';
+ let s=perCourse?await api('/enrollments?courseId='+encodeURIComponent(c)):await api('/students');
+ studs=s;let sel=$('scourse');
+ $('scount').textContent=perCourse?'วิชา '+sel.options[sel.selectedIndex].text+' มีนักศึกษา '+s.length+' คน':'นักศึกษาทั้งหมดในระบบ '+s.length+' คน';
+ $('studentlist').innerHTML=s.map(x=>`<tr><td>${esc(x.student_code)} - ${esc(x.full_name)}${x.must_change?' <span class="note">(ยังไม่ตั้งรหัสผ่านใหม่)</span>':''}</td><td style="white-space:nowrap;text-align:right"><button class="mini gray" onclick="editStudent(${Number(x.id)})">แก้ไข</button><button class="mini gray" onclick="resetPw(${Number(x.id)})">รีเซ็ตรหัสผ่าน</button>${perCourse?`<button class="mini gray" onclick="removeFromCourse(${Number(x.id)})">ถอดออกจากวิชา</button>`:''}<button class="mini danger" onclick="delStudent(${Number(x.id)})">ลบถาวร</button></td></tr>`).join('')||'<tr><td>ยังไม่มีนักศึกษา</td></tr>'
+}
+async function addStudent(){try{let c=$('scourse').value;let r=await api('/students',{method:'POST',body:JSON.stringify({code:$('newcode').value,name:$('newname').value,courseId:c==='all'?'':c})});$('newcode').value='';$('newname').value='';await loadStudents();loadEnrolled();report();if(r.existing)alert('รหัสนี้มีในระบบอยู่แล้ว ลงทะเบียนเข้าวิชานี้ให้เรียบร้อย')}catch(e){alert(e.message)}}
+async function removeFromCourse(sid){let c=$('scourse').value;if(!c||c==='all')return;if(!confirm('ถอดนักศึกษาคนนี้ออกจากวิชานี้?\n(ยังอยู่ในระบบและในวิชาอื่น ถ้าต้องการลบทั้งระบบให้กด ลบถาวร)'))return;try{await api('/enroll?courseId='+encodeURIComponent(c)+'&studentId='+sid,{method:'DELETE'});await loadStudents();loadEnrolled();report()}catch(e){alert(e.message)}}
 async function editStudent(id){let x=studs.find(a=>a.id===id);if(!x)return;let code=prompt('รหัสนักศึกษา',x.student_code);if(code===null)return;let name=prompt('ชื่อ-นามสกุล',x.full_name);if(name===null)return;try{await api('/students/'+id,{method:'PUT',body:JSON.stringify({code,name})});await loadStudents();loadEnrolled();report()}catch(e){alert(e.message)}}
 async function delStudent(id){let x=studs.find(a=>a.id===id);if(!x||!confirm('ลบนักศึกษา '+x.student_code+' - '+x.full_name+' ?\nการลงทะเบียนและประวัติเช็คชื่อของคนนี้จะถูกลบด้วย'))return;try{await api('/students/'+id,{method:'DELETE'});await loadStudents();loadEnrolled();report()}catch(e){alert(e.message)}}
 async function resetPw(id){let x=studs.find(a=>a.id===id);if(!x||!confirm('รีเซ็ตรหัสผ่านของ '+x.student_code+' ให้กลับเป็นรหัสนักศึกษา?\nนักศึกษาต้องตั้งรหัสผ่านใหม่ตอนเข้าครั้งถัดไป'))return;try{await api('/students/'+id+'/reset-password',{method:'POST'});await loadStudents();alert('รีเซ็ตรหัสผ่านแล้ว')}catch(e){alert(e.message)}}
@@ -32,9 +39,9 @@ function showCourseQR(){let c=courses.find(x=>String(x.id)===String($('course').
 async function regenCourseQR(){let c=courses.find(x=>String(x.id)===String($('course').value));if(!c||!confirm('สร้าง QR ใหม่ให้วิชา '+c.code+' ?\nQR เดิมที่แจกหรือติดไว้จะใช้ไม่ได้อีก'))return;try{await api('/courses/'+c.id+'/regen-qr',{method:'POST'});await load()}catch(e){alert(e.message)}}
 
 // ---------- enrollment + Excel import
-async function enroll(){try{await api('/enroll',{method:'POST',body:JSON.stringify({courseId:$('enrollcourse').value,code:$('enrollcode').value})});$('enrollcode').value='';loadEnrolled();report();alert('ลงทะเบียนแล้ว')}catch(e){alert(e.message)}}
+async function enroll(){try{await api('/enroll',{method:'POST',body:JSON.stringify({courseId:$('enrollcourse').value,code:$('enrollcode').value})});$('enrollcode').value='';loadEnrolled();loadStudents();report();alert('ลงทะเบียนแล้ว')}catch(e){alert(e.message)}}
 async function loadEnrolled(){let c=$('enrollcourse').value;if(!c){$('enrolledlist').innerHTML='';return}try{let s=await api('/enrollments?courseId='+encodeURIComponent(c));$('enrolledlist').innerHTML=s.map(x=>`<tr><td>${esc(x.student_code)} - ${esc(x.full_name)}</td><td style="text-align:right"><button class="mini danger" onclick="unenroll(${Number(x.id)})">ถอดออก</button></td></tr>`).join('')||'<tr><td>ยังไม่มีนักศึกษาในรายวิชานี้</td></tr>'}catch(e){console.error(e)}}
-async function unenroll(sid){let c=$('enrollcourse').value;if(!confirm('ถอดนักศึกษาคนนี้ออกจากรายวิชา?'))return;try{await api('/enroll?courseId='+encodeURIComponent(c)+'&studentId='+sid,{method:'DELETE'});loadEnrolled();report()}catch(e){alert(e.message)}}
+async function unenroll(sid){let c=$('enrollcourse').value;if(!confirm('ถอดนักศึกษาคนนี้ออกจากรายวิชา?'))return;try{await api('/enroll?courseId='+encodeURIComponent(c)+'&studentId='+sid,{method:'DELETE'});loadEnrolled();loadStudents();report()}catch(e){alert(e.message)}}
 function norm(x){return String(x==null?'':x).trim()}
 // turns spreadsheet rows (array of arrays) into [{code,name}]; finds the header row when there is one
 function parseRows(aoa){
